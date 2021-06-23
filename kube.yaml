@@ -1,0 +1,107 @@
+# gcloud builds submit --tag gcr.io/intellemo-com/chat-duckling
+# kubectl apply -f kube.yaml -n ai
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-duckling
+  labels:
+    name: chat-duckling
+    namespace: ai
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: chat-duckling
+  template:
+    metadata:
+      name: chat-duckling
+      namespace: ai
+      labels:
+        app: chat-duckling
+    spec:
+      serviceAccountName: ai
+      containers:
+      - name: chat-duckling
+        image: gcr.io/intellemo-com/chat-duckling:caafe36d600ca69fd232a78bb195369989f494ca
+        imagePullPolicy: Always # this is required to force pull image  
+        ports:
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+        env:
+          - name: PORT
+            value: "8080"
+          - name: EDGE
+            value: "/templates"
+          - name: MDB_USER
+            value: chat-duckling
+          - name: GC_PROJECT
+            valueFrom:
+              secretKeyRef:
+                name: creds-mdb
+                key: GC_PROJECT
+          - name: JWT_ALGO
+            valueFrom:
+              secretKeyRef:
+                name: creds-mdb
+                key: JWT_ALGO
+          - name: JWT_SERVICE
+            valueFrom:
+              secretKeyRef:
+                name: creds-mdb
+                key: JWT_SERVICE
+          - name: MDB_CLUSTER
+            valueFrom:
+              secretKeyRef:
+                name: creds-mdb
+                key: MDB_CLUSTER
+          - name: MDB_PSWD
+            valueFrom:
+              secretKeyRef:
+                name: creds-mdb
+                key: chat-duckling
+          - name: BKT_STOCK
+            valueFrom:
+              secretKeyRef:
+                name: creds-mdb
+                key: BKT_STOCK
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chat-duckling
+  namespace: ai
+spec:
+  type: ClusterIP
+  selector:
+    app: chat-duckling
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chat-duckling-ingress
+  namespace: ai
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  rules:
+  - host: api.intellemo.io
+    http:
+      paths:
+      - path: /chat-duckling/
+        pathType: Prefix
+        backend:
+          service:
+            name: chat-duckling
+            port:
+              number: 80
