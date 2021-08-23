@@ -1,3 +1,4 @@
+# Duck runs only on 8000 port
 # gcloud builds submit --tag gcr.io/intellemo-com/chat-duckling
 # kubectl apply -f kube.yaml -n chatbot
 
@@ -9,7 +10,6 @@ metadata:
   labels:
     name: chat-duckling
 spec:
-  replicas: 3
   selector:
     matchLabels:
       app: chat-duckling
@@ -24,18 +24,60 @@ spec:
       - name: chat-duckling
         image: gcr.io/intellemo-com/chat-duckling:0bead027fd6cf9a4d556dc91061a1029cfa5bf81
         imagePullPolicy: Always # this is required to force pull image  
+        resources:
+          requests:
+            cpu: 400m
+            memory: 1200Mi
         ports:
         - containerPort: 8000
         livenessProbe:
           httpGet:
             path: /
             port: 8000
-          initialDelaySeconds: 10
-          timeoutSeconds: 5
+          initialDelaySeconds: 1200
+          timeoutSeconds: 540
+          periodSeconds: 300
+          failureThreshold: 10
         env:
           - name: PORT
             value: "8000"
-
+      nodeSelector:
+        machine: n1s2
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - chat-duckling
+            topologyKey: "kubernetes.io/hostname"
+      tolerations:
+      - key: workgroup
+        operator: Equal
+        value: default
+        effect: NoSchedule
+      restartPolicy: Always
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: chat-duckling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: chat-duckling
+  minReplicas: 1
+  maxReplicas: 100
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
 ---
 apiVersion: v1
 kind: Service
